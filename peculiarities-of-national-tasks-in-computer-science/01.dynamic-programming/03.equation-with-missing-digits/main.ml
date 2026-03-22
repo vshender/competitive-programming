@@ -1,11 +1,40 @@
+(** 1.3. Equation with missing digits *)
+
+(** [num_to_lst s] converts a number string [s] to a list of characters in
+    reverse (least significant digit first). *)
 let num_to_lst x = x |> String.to_seq |> List.of_seq |> List.rev
 
+(** [lst_to_num cs] converts a list of digit characters to a string. *)
 let lst_to_num x = x |> List.to_seq |> String.of_seq
 
+(** [int_of_digit d] returns the integer value of a digit character [d]. *)
 let int_of_digit d = Char.code d - Char.code '0'
 
+(** [digit_of_int i] returns the digit character for an integer [i]. *)
 let digit_of_int i = Char.chr (i + Char.code '0')
 
+(** [q_q_q prev prevc] handles the case where all three digits at the current
+    position are '?'.  Returns a pair of options for (no carry out, carry out),
+    given [prev] (the witness with no incoming carry) and [prevc] (with incoming
+    carry). *)
+let q_q_q prev prevc =
+  match prev with
+  | Some (x, y, z) ->
+    Some ('0' :: x, '0' :: y, '0' :: z), Some ('1' :: x, '9' :: y, '0' :: z)
+  | None ->
+    match prevc with
+    | Some (x, y, z) ->
+      Some ('0' :: x, '0' :: y, '1' :: z), Some ('0' :: x, '9' :: y, '0' :: z)
+    | None -> None, None
+
+
+(** [solve x y z] finds digit replacements for '?' characters in [x], [y],
+    and [z] such that the equation x + y = z holds, or returns [None] if no
+    solution exists.
+
+    Processes digits right to left, tracking the carry (0 or 1).
+    [dp.(i).(c)] stores a witness solution for the first [i] digits with
+    outgoing carry [c], or [None] if no such assignment exists. *)
 let solve x y z =
   let lx = String.length x and ly = String.length y and lz = String.length z in
   let l = max (max lx ly) lz in
@@ -25,18 +54,9 @@ let solve x y z =
       let dx = List.hd x and dy = List.hd y and dz = List.hd z in
       (match dx, dy, dz with
        | '?', '?', '?' ->
-         begin
-           (match dp.(i - 1).(1) with
-            | Some (x', y', z') ->
-              dp.(i).(0) <- Some ('0' :: x', '0' :: y', '1' :: z');
-              dp.(i).(1) <- Some ('0' :: x', '9' :: y', '0' :: z')
-            | None -> ());
-           (match dp.(i - 1).(0) with
-            | Some (x', y', z') ->
-              dp.(i).(0) <- Some ('0' :: x', '0' :: y', '0' :: z');
-              dp.(i).(1) <- Some ('1' :: x', '9' :: y', '0' :: z')
-            | None -> ())
-         end
+         let cur, curc = q_q_q dp.(i - 1).(0) dp.(i - 1).(1) in
+         dp.(i).(0) <- cur;
+         dp.(i).(1) <- curc
        | '0'..'9', '?', '?' ->
          begin
            let ix = int_of_digit dx in
@@ -88,53 +108,56 @@ let solve x y z =
        | '0'..'9', '0'..'9', '?' ->
          begin
            let ix = int_of_digit dx and iy = int_of_digit dy in
-           match dp.(i - 1).(0), dp.(i - 1).(1) with
-           | Some (x', y', z'), _ ->
-             let sum = ix + iy in
-             dp.(i).(sum / 10) <- Some (dx :: x', dy :: y', digit_of_int (sum mod 10) :: z')
-           | _, Some (x', y', z') ->
-             let sum = ix + iy + 1 in
-             dp.(i).(sum / 10) <- Some (dx :: x', dy :: y', digit_of_int (sum mod 10) :: z')
-           | _, _ ->
-             ()
+           (match dp.(i - 1).(1) with
+            | Some (x', y', z') ->
+              let sum = ix + iy + 1 in
+              dp.(i).(sum / 10) <- Some (dx :: x', dy :: y', digit_of_int (sum mod 10) :: z')
+            | None -> ());
+           (match dp.(i - 1).(0) with
+            | Some (x', y', z') ->
+              let sum = ix + iy in
+              dp.(i).(sum / 10) <- Some (dx :: x', dy :: y', digit_of_int (sum mod 10) :: z')
+            | None -> ())
          end
        | '0'..'9', '?', '0'..'9' ->
          begin
            let ix = int_of_digit dx and iz = int_of_digit dz in
-           match dp.(i - 1).(0), dp.(i - 1).(1) with
-           | Some (x', y', z'), _ ->
-             let iy = iz - ix in
-             if iy >= 0 then
-               dp.(i).(0) <- Some (dx :: x', digit_of_int iy :: y', dz :: z')
-             else
-               dp.(i).(1) <- Some (dx :: x', digit_of_int (iy + 10) :: y', dz :: z')
-           | _, Some (x', y', z') ->
-             let iy = iz - ix - 1 in
-             if iy >= 0 then
-               dp.(i).(0) <- Some (dx :: x', digit_of_int iy :: y', dz :: z')
-             else
-               dp.(i).(1) <- Some (dx :: x', digit_of_int (iy + 10) :: y', dz :: z')
-           | _, _ ->
-             ()
+           (match dp.(i - 1).(1) with
+            | Some (x', y', z') ->
+              let iy = iz - ix - 1 in
+              if iy >= 0 then
+                dp.(i).(0) <- Some (dx :: x', digit_of_int iy :: y', dz :: z')
+              else
+                dp.(i).(1) <- Some (dx :: x', digit_of_int (iy + 10) :: y', dz :: z')
+            | None -> ());
+           (match dp.(i - 1).(0) with
+            | Some (x', y', z') ->
+              let iy = iz - ix in
+              if iy >= 0 then
+                dp.(i).(0) <- Some (dx :: x', digit_of_int iy :: y', dz :: z')
+              else
+                dp.(i).(1) <- Some (dx :: x', digit_of_int (iy + 10) :: y', dz :: z')
+            | None -> ())
          end
        | '?', '0'..'9', '0'..'9' ->
          begin
            let iy = int_of_digit dy and iz = int_of_digit dz in
-           match dp.(i - 1).(0), dp.(i - 1).(1) with
-           | Some (x', y', z'), _ ->
-             let ix = iz - iy in
-             if ix >= 0 then
-               dp.(i).(0) <- Some (digit_of_int ix :: x', dy :: y', dz :: z')
-             else
-               dp.(i).(1) <- Some (digit_of_int (ix + 10) :: x', dy :: y', dz :: z')
-           | _, Some (x', y', z') ->
-             let ix = iz - iy - 1 in
-             if ix >= 0 then
-               dp.(i).(0) <- Some (digit_of_int ix :: x', dy :: y', dz :: z')
-             else
-               dp.(i).(1) <- Some (digit_of_int (ix + 10) :: x', dy :: y', dz :: z')
-           | _, _ ->
-             ()
+           (match dp.(i - 1).(1) with
+            | Some (x', y', z') ->
+              let ix = iz - iy - 1 in
+              if ix >= 0 then
+                dp.(i).(0) <- Some (digit_of_int ix :: x', dy :: y', dz :: z')
+              else
+                dp.(i).(1) <- Some (digit_of_int (ix + 10) :: x', dy :: y', dz :: z')
+            | None -> ());
+           (match dp.(i - 1).(0) with
+            | Some (x', y', z') ->
+              let ix = iz - iy in
+              if ix >= 0 then
+                dp.(i).(0) <- Some (digit_of_int ix :: x', dy :: y', dz :: z')
+              else
+                dp.(i).(1) <- Some (digit_of_int (ix + 10) :: x', dy :: y', dz :: z')
+            | None -> ())
          end
        | '0'..'9', '0'..'9', '0'..'9' ->
          begin
@@ -152,7 +175,7 @@ let solve x y z =
                 dp.(i).(sum / 10) <- Some (dx :: x', dy :: y', dz :: z')
             | None -> ())
          end
-       | _, _, _ -> failwith "x");
+       | _, _, _ -> failwith "unexpected character in pattern");
       iter (i + 1) (List.tl x) (List.tl y) (List.tl z)
   in
   iter 1 x y z |> Option.map
@@ -162,6 +185,8 @@ let solve x y z =
          String.sub z (l - lz) lz
        ))
 
+(** [parse_equation s] splits a string of the form "A+B=C" into the triple
+    [(A, B, C)]. *)
 let parse_equation equation =
   let n = String.length equation
   and i = String.index equation '+'
